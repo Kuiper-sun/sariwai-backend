@@ -2,7 +2,7 @@
 title: SariwAI API
 emoji: 🐟
 colorFrom: green
-colorTo: teal
+colorTo: blue
 sdk: docker
 pinned: false
 ---
