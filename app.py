@@ -1,4 +1,4 @@
-# app.py (FINAL VERSION)
+# app.py (FINAL VERSION with Improved Logic)
 
 import os
 import time
@@ -60,17 +60,21 @@ def predict():
             outputs = model(**inputs)
 
         target_sizes = torch.tensor([image.size[::-1]])
-        results = image_processor.post_process_object_detection(outputs, threshold=0.2, target_sizes=target_sizes)[0]
+        
+        # ==========================================================
+        # ##               LOGIC FIX #1: HIGHER THRESHOLD        ##
+        # ==========================================================
+        # Increase threshold to 0.4 to filter out low-confidence false positives (like hands/fingers)
+        results = image_processor.post_process_object_detection(outputs, threshold=0.4, target_sizes=target_sizes)[0]
 
         print("\n" + "="*50)
         print("            STARTING NEW PREDICTION ANALYSIS")
         print("="*50)
         
-        # LOGIC TO HANDLE NO DETECTIONS
+        # First check: If the model found NOTHING AT ALL above the new, higher threshold.
         if not results or not results["scores"].nelement():
-             print("‼️  CRITICAL: The model detected NOTHING above the threshold.")
+             print("‼️  CRITICAL: The model detected NOTHING above the 0.4 threshold.")
              print("="*50 + "\n")
-             # Return a specific response for this case
              return jsonify({
                 'status': 'No Fish Detected',
                 'eye_prediction': 'Not Found',
@@ -99,6 +103,21 @@ def predict():
                 best_gill['score'] = score.item()
                 best_gill['status'] = label.rsplit('_', 1)[0]
         
+        # ==========================================================
+        # ##    LOGIC FIX #2: CHECK IF EYE OR GILL WAS FOUND      ##
+        # ==========================================================
+        # Second check: If the model found objects, but NONE of them were an eye or a gill.
+        if best_eye['status'] == 'Not Found' and best_gill['status'] == 'Not Found':
+            print("‼️  CRITICAL: Objects were detected, but none were identified as an eye or gill.")
+            print("="*50 + "\n")
+            return jsonify({
+                'status': 'No Fish Detected', # Re-use the same clear status for the user
+                'eye_prediction': 'Not Found',
+                'gill_prediction': 'Not Found',
+                'eye_score': -1.0,
+                'gill_score': -1.0,
+            })
+
         final_status = apply_freshness_rules(best_eye['status'], best_gill['status'])
         
         end_time = time.time()
