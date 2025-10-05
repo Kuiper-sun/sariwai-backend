@@ -1,4 +1,4 @@
-# app.py (FIXED VERSION - Only Detects Eyes and Gills)
+# app.py (FIXED VERSION - Requires BOTH Eye AND Gill Detection)
 
 import os
 import time
@@ -23,15 +23,14 @@ def apply_freshness_rules(eye_status, gill_status):
     eye_found = eye_status != "Not Found"
     gill_found = gill_status != "Not Found"
 
-    if not eye_found and not gill_found: return "Undetermined"
+    # CRITICAL: Both must be found
+    if not eye_found or not gill_found:
+        return "Incomplete Detection"
 
-    eye_level = hierarchy.get(eye_status.lower().replace('_', '-'), -1) if eye_found else -1
-    gill_level = hierarchy.get(gill_status.lower().replace('_', '-'), -1) if gill_found else -1
+    eye_level = hierarchy.get(eye_status.lower().replace('_', '-'), -1)
+    gill_level = hierarchy.get(gill_status.lower().replace('_', '-'), -1)
 
-    final_level = -1
-    if eye_found and gill_found: final_level = max(eye_level, gill_level)
-    elif eye_found: final_level = eye_level
-    else: final_level = gill_level
+    final_level = max(eye_level, gill_level)
 
     if final_level == 0: return 'Fresh'
     elif final_level == 1: return 'Not Fresh'
@@ -82,9 +81,6 @@ def predict():
         best_eye = {'score': -1.0, 'status': 'Not Found'}
         best_gill = {'score': -1.0, 'status': 'Not Found'}
 
-        # ==========================================================
-        # ##    FIX: ONLY PROCESS DETECTIONS THAT ARE EYES/GILLS  ##
-        # ==========================================================
         for score, label_id, box in zip(results["scores"], results["labels"], results["boxes"]):
             label = model.config.id2label[label_id.item()]
             label_lower = label.lower()
@@ -105,16 +101,23 @@ def predict():
             else:
                 print(f"    ❌ Ignored (not an eye or gill)")
         
-        # Check if we found any eyes or gills
-        if best_eye['status'] == 'Not Found' and best_gill['status'] == 'Not Found':
-            print("‼️  CRITICAL: Objects were detected, but none were identified as an eye or gill.")
+        # CRITICAL CHECK: Both eye AND gill must be detected
+        if best_eye['status'] == 'Not Found' or best_gill['status'] == 'Not Found':
+            missing = []
+            if best_eye['status'] == 'Not Found':
+                missing.append("eye")
+            if best_gill['status'] == 'Not Found':
+                missing.append("gill")
+            
+            print(f"‼️  CRITICAL: Incomplete detection - Missing {' and '.join(missing)}")
             print("="*50 + "\n")
             return jsonify({
-                'status': 'No Fish Detected',
-                'eye_prediction': 'Not Found',
-                'gill_prediction': 'Not Found',
-                'eye_score': -1.0,
-                'gill_score': -1.0,
+                'status': 'Incomplete Detection',
+                'eye_prediction': best_eye['status'],
+                'gill_prediction': best_gill['status'],
+                'eye_score': best_eye['score'],
+                'gill_score': best_gill['score'],
+                'message': f"Both eye and gill must be detected. Missing: {', '.join(missing)}"
             })
 
         final_status = apply_freshness_rules(best_eye['status'], best_gill['status'])
