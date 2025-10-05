@@ -1,4 +1,4 @@
-# app.py (FINAL VERSION with Improved Logic)
+# app.py (FIXED VERSION - Only Detects Eyes and Gills)
 
 import os
 import time
@@ -60,18 +60,12 @@ def predict():
             outputs = model(**inputs)
 
         target_sizes = torch.tensor([image.size[::-1]])
-        
-        # ==========================================================
-        # ##               LOGIC FIX #1: HIGHER THRESHOLD        ##
-        # ==========================================================
-        # Increase threshold to 0.4 to filter out low-confidence false positives (like hands/fingers)
         results = image_processor.post_process_object_detection(outputs, threshold=0.4, target_sizes=target_sizes)[0]
 
         print("\n" + "="*50)
         print("            STARTING NEW PREDICTION ANALYSIS")
         print("="*50)
         
-        # First check: If the model found NOTHING AT ALL above the new, higher threshold.
         if not results or not results["scores"].nelement():
              print("‼️  CRITICAL: The model detected NOTHING above the 0.4 threshold.")
              print("="*50 + "\n")
@@ -84,34 +78,39 @@ def predict():
             })
 
         print(f"✅  Model found {len(results['scores'])} potential objects:")
-        for i, score in enumerate(results["scores"]):
-            label_id = results["labels"][i].item()
-            label = model.config.id2label[label_id]
-            print(f"  - Detection: Label = '{label}', Confidence = {score.item():.4f}")
         
         best_eye = {'score': -1.0, 'status': 'Not Found'}
         best_gill = {'score': -1.0, 'status': 'Not Found'}
 
+        # ==========================================================
+        # ##    FIX: ONLY PROCESS DETECTIONS THAT ARE EYES/GILLS  ##
+        # ==========================================================
         for score, label_id, box in zip(results["scores"], results["labels"], results["boxes"]):
             label = model.config.id2label[label_id.item()]
+            label_lower = label.lower()
             
-            if 'eye' in label.lower() and score > best_eye['score']:
-                best_eye['score'] = score.item()
-                best_eye['status'] = label.rsplit('_', 1)[0]
-
-            if 'gill' in label.lower() and score > best_gill['score']:
-                best_gill['score'] = score.item()
-                best_gill['status'] = label.rsplit('_', 1)[0]
+            print(f"  - Detection: Label = '{label}', Confidence = {score.item():.4f}")
+            
+            # Only process if the label contains 'eye' or 'gill'
+            if 'eye' in label_lower:
+                if score > best_eye['score']:
+                    best_eye['score'] = score.item()
+                    best_eye['status'] = label.rsplit('_', 1)[0]
+                    print(f"    ✅ Valid EYE detection kept")
+            elif 'gill' in label_lower:
+                if score > best_gill['score']:
+                    best_gill['score'] = score.item()
+                    best_gill['status'] = label.rsplit('_', 1)[0]
+                    print(f"    ✅ Valid GILL detection kept")
+            else:
+                print(f"    ❌ Ignored (not an eye or gill)")
         
-        # ==========================================================
-        # ##    LOGIC FIX #2: CHECK IF EYE OR GILL WAS FOUND      ##
-        # ==========================================================
-        # Second check: If the model found objects, but NONE of them were an eye or a gill.
+        # Check if we found any eyes or gills
         if best_eye['status'] == 'Not Found' and best_gill['status'] == 'Not Found':
             print("‼️  CRITICAL: Objects were detected, but none were identified as an eye or gill.")
             print("="*50 + "\n")
             return jsonify({
-                'status': 'No Fish Detected', # Re-use the same clear status for the user
+                'status': 'No Fish Detected',
                 'eye_prediction': 'Not Found',
                 'gill_prediction': 'Not Found',
                 'eye_score': -1.0,
