@@ -8,7 +8,7 @@ from PIL import Image
 import torch
 
 app = Flask(__name__)
-MODEL_PATH = "." 
+MODEL_PATH = "Kuiper-sun/sariwai-rt-detr-v2" 
 
 try:
     image_processor = AutoImageProcessor.from_pretrained(MODEL_PATH)
