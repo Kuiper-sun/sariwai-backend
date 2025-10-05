@@ -1,13 +1,14 @@
-# app.py (Now with Execution Time)
+# app.py (Now with Confidence Scores in Response)
 
 import os
-import time  # <--- 1. IMPORT THE TIME LIBRARY
+import time
 from flask import Flask, request, jsonify
 from transformers import AutoImageProcessor, AutoModelForObjectDetection
 from PIL import Image
 import torch
 
 app = Flask(__name__)
+# The MODEL_PATH is loaded from Hugging Face Hub by the environment
 MODEL_PATH = "Kuiper-sun/sariwai-rt-detr-v2" 
 
 try:
@@ -16,9 +17,10 @@ try:
     print("✅ Object Detection Model loaded successfully!")
 except Exception as e:
     print(f"❌ Error loading model: {e}")
+    # In a real server, you might want to handle this more gracefully
+    # but for Spaces, letting it fail makes the error visible in logs.
     exit()
 
-# Using the more robust rules from our previous discussion
 def apply_freshness_rules(eye_status, gill_status):
     hierarchy = {'fresh': 0, 'not-fresh': 1, 'old': 2}
     eye_found = eye_status != "Not Found"
@@ -39,9 +41,12 @@ def apply_freshness_rules(eye_status, gill_status):
     elif final_level == 2: return 'Old'
     else: return 'Undetermined'
 
+@app.route('/healthz')
+def healthz():
+    return "OK", 200
+
 @app.route('/predict', methods=['POST'])
 def predict():
-    # <--- 2. RECORD THE START TIME ---
     start_time = time.time()
 
     if 'file' not in request.files:
@@ -53,15 +58,11 @@ def predict():
 
     try:
         image = Image.open(file.stream).convert("RGB")
-
-        # --- Model Inference ---
         inputs = image_processor(images=image, return_tensors="pt")
         with torch.no_grad():
             outputs = model(**inputs)
-        # --- End Model Inference ---
 
         target_sizes = torch.tensor([image.size[::-1]])
-        # Using a 20% confidence threshold is a good standard value
         results = image_processor.post_process_object_detection(outputs, threshold=0.2, target_sizes=target_sizes)[0]
 
         print("\n" + "="*50)
@@ -93,7 +94,6 @@ def predict():
         
         final_status = apply_freshness_rules(best_eye['status'], best_gill['status'])
         
-        # <--- 3. CALCULATE AND PRINT THE DURATION ---
         end_time = time.time()
         duration = end_time - start_time
 
@@ -102,22 +102,26 @@ def predict():
         print(f"Best Gill Found: {best_gill['status']} (Score: {best_gill['score']:.4f})")
         print(f"Final Determined Status: {final_status}")
         print("-" * 20)
-        print(f"⏱️  Total Execution Time: {duration:.4f} seconds") # Formatted to 4 decimal places
+        print(f"⏱️  Total Execution Time: {duration:.4f} seconds")
         print("="*50 + "\n")
 
+        # ==========================================================
+        # ##               CHANGES ARE HERE                      ##
+        # ==========================================================
         return jsonify({
             'status': final_status,
             'eye_prediction': best_eye['status'],
             'gill_prediction': best_gill['status'],
+            # ADD THESE TWO LINES:
+            'eye_score': best_eye['score'],
+            'gill_score': best_gill['score'],
         })
 
     except Exception as e:
+        # It's good practice to log the full error on the server
+        print(f"❌ An error occurred during prediction: {str(e)}")
         return jsonify({'error': f"An error occurred during prediction: {str(e)}"}), 500
-    
-@app.route('/healthz')
-def healthz():
-    # This endpoint is used by Render to check if the app is alive.
-    return "OK", 200
 
 if __name__ == '__main__':
+    # This part is for local development, not used in production on Spaces
     app.run(host='0.0.0.0', port=5000)
