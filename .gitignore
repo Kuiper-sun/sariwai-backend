@@ -1,0 +1,16 @@
+# Virtual Environment
+venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# AI Model Files - Do not commit large model files to Git
+# Render will download these based on your code
+*.safetensors
+*.bin
+
+# IDE files
+.idea/
+.vscode/
