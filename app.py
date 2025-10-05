@@ -1,4 +1,4 @@
-# app.py (Now with Confidence Scores in Response)
+# app.py (FINAL VERSION)
 
 import os
 import time
@@ -8,7 +8,6 @@ from PIL import Image
 import torch
 
 app = Flask(__name__)
-# The MODEL_PATH is loaded from Hugging Face Hub by the environment
 MODEL_PATH = "Kuiper-sun/sariwai-rt-detr-v2" 
 
 try:
@@ -17,8 +16,6 @@ try:
     print("✅ Object Detection Model loaded successfully!")
 except Exception as e:
     print(f"❌ Error loading model: {e}")
-    # In a real server, you might want to handle this more gracefully
-    # but for Spaces, letting it fail makes the error visible in logs.
     exit()
 
 def apply_freshness_rules(eye_status, gill_status):
@@ -69,17 +66,27 @@ def predict():
         print("            STARTING NEW PREDICTION ANALYSIS")
         print("="*50)
         
+        # LOGIC TO HANDLE NO DETECTIONS
         if not results or not results["scores"].nelement():
              print("‼️  CRITICAL: The model detected NOTHING above the threshold.")
-        else:
-            print(f"✅  Model found {len(results['scores'])} potential objects:")
-            for i, score in enumerate(results["scores"]):
-                label_id = results["labels"][i].item()
-                label = model.config.id2label[label_id]
-                print(f"  - Detection: Label = '{label}', Confidence = {score.item():.4f}")
+             print("="*50 + "\n")
+             # Return a specific response for this case
+             return jsonify({
+                'status': 'No Fish Detected',
+                'eye_prediction': 'Not Found',
+                'gill_prediction': 'Not Found',
+                'eye_score': -1.0,
+                'gill_score': -1.0,
+            })
+
+        print(f"✅  Model found {len(results['scores'])} potential objects:")
+        for i, score in enumerate(results["scores"]):
+            label_id = results["labels"][i].item()
+            label = model.config.id2label[label_id]
+            print(f"  - Detection: Label = '{label}', Confidence = {score.item():.4f}")
         
-        best_eye = {'score': -1, 'status': 'Not Found'}
-        best_gill = {'score': -1, 'status': 'Not Found'}
+        best_eye = {'score': -1.0, 'status': 'Not Found'}
+        best_gill = {'score': -1.0, 'status': 'Not Found'}
 
         for score, label_id, box in zip(results["scores"], results["labels"], results["boxes"]):
             label = model.config.id2label[label_id.item()]
@@ -105,23 +112,17 @@ def predict():
         print(f"⏱️  Total Execution Time: {duration:.4f} seconds")
         print("="*50 + "\n")
 
-        # ==========================================================
-        # ##               CHANGES ARE HERE                      ##
-        # ==========================================================
         return jsonify({
             'status': final_status,
             'eye_prediction': best_eye['status'],
             'gill_prediction': best_gill['status'],
-            # ADD THESE TWO LINES:
             'eye_score': best_eye['score'],
             'gill_score': best_gill['score'],
         })
 
     except Exception as e:
-        # It's good practice to log the full error on the server
         print(f"❌ An error occurred during prediction: {str(e)}")
         return jsonify({'error': f"An error occurred during prediction: {str(e)}"}), 500
 
 if __name__ == '__main__':
-    # This part is for local development, not used in production on Spaces
     app.run(host='0.0.0.0', port=5000)
