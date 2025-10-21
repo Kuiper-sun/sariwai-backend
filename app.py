@@ -1,4 +1,4 @@
-# app.py (FIXED VERSION - Requires BOTH Eye AND Gill Detection)
+
 
 import os
 import time
